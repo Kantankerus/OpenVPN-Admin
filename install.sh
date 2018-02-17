@@ -59,6 +59,12 @@ if [[ -z $server_port ]]; then
   server_port="443"
 fi
 
+read -p "External firewall? (yes or no) [no]: " external_firewall
+
+if [[ -z $external_firewall ]]; then
+  external_firewall="no"
+fi
+
 # Get root pass (to create the database and the user)
 mysql_root_pass=""
 status_code=1
@@ -200,15 +206,17 @@ echo "net.ipv4.ip_forward = 1" >> "/etc/sysctl.conf"
 primary_nic=`route | grep '^default' | grep -o '[^ ]*$'`
 
 # Iptable rules
-iptables -I FORWARD -i tun0 -j ACCEPT
-iptables -I FORWARD -o tun0 -j ACCEPT
-iptables -I OUTPUT -o tun0 -j ACCEPT
+if [ $external_firewall = "yes" ]; then
+  iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $primary_nic -j MASQUERADE
+else
+  iptables -I FORWARD -i tun0 -j ACCEPT
+  iptables -I FORWARD -o tun0 -j ACCEPT
+  iptables -I OUTPUT -o tun0 -j ACCEPT
 
-iptables -A FORWARD -i tun0 -o $primary_nic -j ACCEPT
-iptables -t nat -A POSTROUTING -o $primary_nic -j MASQUERADE
-iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $primary_nic -j MASQUERADE
-iptables -t nat -A POSTROUTING -s 10.8.0.2/24 -o $primary_nic -j MASQUERADE
-
+  iptables -A FORWARD -i tun0 -o $primary_nic -j ACCEPT
+  iptables -t nat -A POSTROUTING -o $primary_nic -j MASQUERADE
+  iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $primary_nic -j MASQUERADE
+fi
 
 printf "\n################## Setup MySQL database ##################\n"
 
